@@ -1,0 +1,38 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+venv2/
+env/
+ENV/
+.venv/
+
+# Environment files & secrets (CRITICAL)
+.env
+.env.*
+*.env
+serviceAccountKey*.json
+*service-account*.json
+firebase-adminsdk*.json
+secrets/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+edukkit_backup*.db
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+test_step44_7_security_audit.py

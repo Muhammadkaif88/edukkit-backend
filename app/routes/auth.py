@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from firebase_admin import auth as firebase_auth
 

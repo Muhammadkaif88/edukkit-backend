@@ -33,6 +33,7 @@ def _product_to_dict(product: Product) -> dict:
     }
 
 
+@router.get("", include_in_schema=False)
 @router.get("/")
 def get_products(
     product_type: Optional[str] = None,

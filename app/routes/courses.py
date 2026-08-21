@@ -53,6 +53,7 @@ def _course_to_dict(course: Course, include_lessons: bool = False) -> dict:
     return data
 
 
+@router.get("", include_in_schema=False)
 @router.get("/")
 def get_courses(
     category: Optional[str] = None,

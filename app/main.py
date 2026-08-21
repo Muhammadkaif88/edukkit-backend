@@ -19,21 +19,27 @@ app = FastAPI(title="EdukkitApp API", version="2.0.0")
 app_env = os.getenv("APP_ENV", "development").lower()
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 
-if app_env == "production":
-    if cors_origins_env:
-        origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
-    else:
-        origins = [
-            "https://admin.edukkit.com",
-            "https://edukkit.com",
-            "https://www.edukkit.com",
-        ]
+# Base origins always permitted
+default_origins = [
+    "https://admin.edukkit.com",
+    "https://edukkit.com",
+    "https://www.edukkit.com",
+    "http://localhost",
+    "http://127.0.0.1",
+]
+
+if cors_origins_env:
+    origins = [origin.strip() for origin in cors_origins_env.split(",") if origin.strip()]
+    for o in default_origins:
+        if o not in origins:
+            origins.append(o)
 else:
-    origins = ["*"]
+    origins = default_origins
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

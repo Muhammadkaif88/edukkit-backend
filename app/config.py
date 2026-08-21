@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     CASHFREE_API_VERSION: str = os.getenv("CASHFREE_API_VERSION", "2023-08-01")
     CASHFREE_WEBHOOK_SECRET: str = os.getenv("CASHFREE_WEBHOOK_SECRET", "")
     CASHFREE_RETURN_URL: str = os.getenv("CASHFREE_RETURN_URL", "https://edukkit.com/payment-response?order_id={order_id}")
-    CASHFREE_NOTIFY_URL: str = os.getenv("CASHFREE_NOTIFY_URL", "https://api.edukkit.com/api/payments/cashfree/webhook")
+    CASHFREE_NOTIFY_URL: str = os.getenv("CASHFREE_NOTIFY_URL", "https://edukkit-backend.onrender.com/api/payments/cashfree/webhook")
 
     # Delivery Fee Rules
     DELIVERY_FEE_KERALA: float = 70.0

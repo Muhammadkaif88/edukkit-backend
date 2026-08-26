@@ -668,9 +668,23 @@ def get_admin_orders(
     db: Session = Depends(get_db),
 ):
     """
-    Lists orders with search, status filters, and pagination.
+    Lists orders with multi-field search, status filters, pagination, and database-wide metrics.
     """
-    query = db.query(Order)
+    base_query = db.query(Order)
+    
+    # Authoritative database-wide summary metrics
+    total_db_orders = base_query.count()
+    paid_db_orders = base_query.filter(
+        (Order.payment_status == "PAYMENT_SUCCESS") | (Order.order_status.in_(["PAID", "PROCESSING", "PACKED", "SHIPPED", "DELIVERED"]))
+    ).count()
+    total_db_revenue = base_query.filter(Order.payment_status == "PAYMENT_SUCCESS").with_entities(func.sum(Order.total_payable)).scalar() or 0.0
+    processing_db_orders = base_query.filter(Order.order_status.in_(["PROCESSING", "PACKED", "CONFIRMED"])).count()
+    shipped_db_orders = base_query.filter(Order.order_status == "SHIPPED").count()
+    delivered_db_orders = base_query.filter(Order.order_status == "DELIVERED").count()
+    cancelled_db_orders = base_query.filter(Order.order_status == "CANCELLED").count()
+    pending_payment_db_orders = base_query.filter(Order.payment_status == "PAYMENT_PENDING").count()
+
+    query = base_query
     if order_status:
         query = query.filter(Order.order_status == order_status.upper())
     if payment_status:
@@ -679,10 +693,14 @@ def get_admin_orders(
         term = f"%{search.strip()}%"
         query = query.filter(
             (Order.id.ilike(term))
+            | (Order.cashfree_order_id.ilike(term))
+            | (Order.cashfree_payment_id.ilike(term))
+            | (Order.razorpay_order_id.ilike(term))
+            | (Order.razorpay_payment_id.ilike(term))
+            | (Order.user_id.ilike(term))
             | (Order.customer_name.ilike(term))
             | (Order.customer_email.ilike(term))
             | (Order.customer_phone.ilike(term))
-            | (Order.cashfree_payment_id.ilike(term))
             | (Order.tracking_number.ilike(term))
         )
 
@@ -694,6 +712,16 @@ def get_admin_orders(
         "limit": limit,
         "offset": offset,
         "orders": [_serialize_admin_order(o) for o in orders],
+        "summary": {
+            "total_orders": total_db_orders,
+            "paid_orders": paid_db_orders,
+            "total_revenue": round(float(total_db_revenue), 2),
+            "processing_orders": processing_db_orders,
+            "shipped_orders": shipped_db_orders,
+            "delivered_orders": delivered_db_orders,
+            "cancelled_orders": cancelled_db_orders,
+            "pending_payment_orders": pending_payment_db_orders,
+        },
     }
 
 

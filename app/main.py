@@ -16,20 +16,38 @@ Base.metadata.create_all(bind=engine)
 def run_startup_migrations():
     """Ensure newly added columns exist in older database instances."""
     migrations = [
+        # --- orders table ---
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR;",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_region VARCHAR DEFAULT 'Digital/DIY';",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee_rule VARCHAR DEFAULT 'FREE_DELIVERY';",
         "ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount FLOAT DEFAULT 0.0;",
+        # Cashfree gateway columns
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cashfree_order_id VARCHAR;",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cashfree_session_id VARCHAR;",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS cashfree_payment_id VARCHAR;",
+        # Razorpay gateway columns
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_order_id VARCHAR;",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_payment_id VARCHAR;",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS razorpay_signature VARCHAR;",
+        # Other order metadata
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_method VARCHAR DEFAULT 'Cashfree Online';",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_attempt_count INTEGER DEFAULT 1;",
+        # user_id may have been added later
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS user_id VARCHAR;",
+        # --- users table ---
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_status VARCHAR DEFAULT 'pending';",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image VARCHAR;",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;",
+        # --- courses table ---
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS original_price FLOAT;",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS short_description VARCHAR;",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS bunny_collection_id VARCHAR;",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS teacher_id INTEGER;",
         "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_free BOOLEAN DEFAULT FALSE;",
+        # --- lessons table ---
         "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS notes_pdf VARCHAR;",
         "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS circuit_diagram VARCHAR;",
+        # --- products table ---
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS original_price FLOAT;",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS type VARCHAR DEFAULT 'diy_kit';",
         "ALTER TABLE products ADD COLUMN IF NOT EXISTS linked_course_id INTEGER;",

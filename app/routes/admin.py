@@ -21,46 +21,65 @@ logger = logging.getLogger("admin_routes")
 router = APIRouter()
 
 
+from datetime import datetime, timezone
 def _serialize_admin_order(order: Order) -> dict:
-    items_data = []
-    if order.items_json:
-        try:
-            items_data = json.loads(order.items_json)
-        except Exception:
-            items_data = []
+    try:
+        items_data = []
+        if getattr(order, "items_json", None):
+            try:
+                items_data = json.loads(order.items_json)
+            except Exception:
+                items_data = []
 
-    shipping_addr = None
-    if order.shipping_address_json:
-        try:
-            shipping_addr = json.loads(order.shipping_address_json)
-        except Exception:
-            shipping_addr = order.shipping_address_json
+        shipping_addr = None
+        if getattr(order, "shipping_address_json", None):
+            try:
+                shipping_addr = json.loads(order.shipping_address_json)
+            except Exception:
+                shipping_addr = order.shipping_address_json
 
-    return {
-        "id": order.id,
-        "user_id": order.user_id,
-        "customer_name": order.customer_name,
-        "customer_email": order.customer_email,
-        "customer_phone": order.customer_phone,
-        "items": items_data,
-        "items_total": order.items_total,
-        "delivery_fee": order.delivery_fee,
-        "delivery_region": order.delivery_region,
-        "delivery_fee_rule": order.delivery_fee_rule,
-        "discount_amount": order.discount_amount,
-        "total_payable": order.total_payable,
-        "currency": order.currency,
-        "shipping_address": shipping_addr,
-        "payment_status": order.payment_status,
-        "order_status": order.order_status,
-        "payment_method": order.payment_method,
-        "cashfree_order_id": order.cashfree_order_id,
-        "cashfree_payment_id": order.cashfree_payment_id,
-        "tracking_number": order.tracking_number,
-        "razorpay_order_id": order.razorpay_order_id,
-        "created_at": order.created_at.isoformat() if order.created_at else None,
-        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-    }
+        return {
+            "id": getattr(order, "id", ""),
+            "user_id": getattr(order, "user_id", None),
+            "customer_name": getattr(order, "customer_name", "Customer"),
+            "customer_email": getattr(order, "customer_email", ""),
+            "customer_phone": getattr(order, "customer_phone", ""),
+            "items": items_data,
+            "items_total": getattr(order, "items_total", 0.0),
+            "delivery_fee": getattr(order, "delivery_fee", 0.0),
+            "delivery_region": getattr(order, "delivery_region", "Digital/DIY"),
+            "delivery_fee_rule": getattr(order, "delivery_fee_rule", "FREE_DELIVERY"),
+            "discount_amount": getattr(order, "discount_amount", 0.0),
+            "total_payable": getattr(order, "total_payable", 0.0),
+            "currency": getattr(order, "currency", "INR"),
+            "shipping_address": shipping_addr,
+            "payment_status": getattr(order, "payment_status", "PAYMENT_PENDING"),
+            "order_status": getattr(order, "order_status", "PENDING_PAYMENT"),
+            "payment_method": getattr(order, "payment_method", "Cashfree Online"),
+            "cashfree_order_id": getattr(order, "cashfree_order_id", None),
+            "cashfree_payment_id": getattr(order, "cashfree_payment_id", None),
+            "tracking_number": getattr(order, "tracking_number", None),
+            "razorpay_order_id": getattr(order, "razorpay_order_id", None),
+            "created_at": order.created_at.isoformat() if getattr(order, "created_at", None) else None,
+            "updated_at": order.updated_at.isoformat() if getattr(order, "updated_at", None) else None,
+        }
+    except Exception as e:
+        logger.error(f"Error serializing order: {e}")
+        return {
+            "id": getattr(order, "id", "unknown"),
+            "user_id": getattr(order, "user_id", None),
+            "customer_name": getattr(order, "customer_name", "Customer"),
+            "customer_email": getattr(order, "customer_email", ""),
+            "items": [],
+            "items_total": 0.0,
+            "delivery_fee": 0.0,
+            "discount_amount": 0.0,
+            "total_payable": getattr(order, "total_payable", 0.0),
+            "currency": "INR",
+            "payment_status": getattr(order, "payment_status", "PAYMENT_PENDING"),
+            "order_status": getattr(order, "order_status", "PENDING_PAYMENT"),
+            "created_at": None,
+        }
 
 
 # ==============================================================================
@@ -75,62 +94,86 @@ def get_admin_stats(
     """
     High-level dashboard KPIs and operational counters.
     """
-    total_students = db.query(func.count(User.id)).filter(User.role == "student").scalar() or 0
-    total_teachers = db.query(func.count(User.id)).filter(User.role == "teacher").scalar() or 0
-    total_admins = db.query(func.count(User.id)).filter(User.role == "admin").scalar() or 0
-    
-    total_courses = db.query(func.count(Course.id)).scalar() or 0
-    published_courses = db.query(func.count(Course.id)).filter(Course.is_published == True).scalar() or 0
-    total_lessons = db.query(func.count(Lesson.id)).scalar() or 0
+    try:
+        total_students = db.query(func.count(User.id)).filter(User.role == "student").scalar() or 0
+        total_teachers = db.query(func.count(User.id)).filter(User.role == "teacher").scalar() or 0
+        total_admins = db.query(func.count(User.id)).filter(User.role == "admin").scalar() or 0
+        
+        total_courses = db.query(func.count(Course.id)).scalar() or 0
+        published_courses = db.query(func.count(Course.id)).filter(Course.is_published == True).scalar() or 0
+        total_lessons = db.query(func.count(Lesson.id)).scalar() or 0
 
-    total_products = db.query(func.count(Product.id)).scalar() or 0
-    low_stock_products = db.query(func.count(Product.id)).filter(Product.stock <= 5, Product.is_active == True).scalar() or 0
+        total_products = db.query(func.count(Product.id)).scalar() or 0
+        low_stock_products = db.query(func.count(Product.id)).filter(Product.stock <= 5, Product.is_active == True).scalar() or 0
 
-    total_orders = db.query(func.count(Order.id)).scalar() or 0
-    paid_orders = db.query(func.count(Order.id)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0
-    total_revenue = db.query(func.sum(Order.total_payable)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0.0
+        total_orders = db.query(func.count(Order.id)).scalar() or 0
+        paid_orders = db.query(func.count(Order.id)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0
+        total_revenue = db.query(func.sum(Order.total_payable)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0.0
 
-    today_start = datetime.combine(date.today(), dtime.min)
-    today_orders = db.query(func.count(Order.id)).filter(Order.created_at >= today_start).scalar() or 0
-    pending_orders = db.query(func.count(Order.id)).filter(
-        (Order.order_status.in_(["PENDING_PAYMENT", "PAID", "PROCESSING", "CONFIRMED"])) |
-        (Order.payment_status == "PAYMENT_PENDING")
-    ).scalar() or 0
+        today_orders = 0
+        try:
+            today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+            today_orders = db.query(func.count(Order.id)).filter(Order.created_at >= today_start).scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error computing today_orders: {e}")
 
-    recent_orders_raw = db.query(Order).order_by(desc(Order.created_at)).limit(5).all()
-    recent_orders = [_serialize_admin_order(o) for o in recent_orders_raw]
+        pending_orders = 0
+        try:
+            pending_orders = db.query(func.count(Order.id)).filter(
+                (Order.order_status.in_(["PENDING_PAYMENT", "PAID", "PROCESSING", "CONFIRMED"])) |
+                (Order.payment_status == "PAYMENT_PENDING")
+            ).scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error computing pending_orders: {e}")
 
-    active_entitlements = db.query(func.count(CourseEntitlement.id)).filter(CourseEntitlement.status == "ACTIVE").scalar() or 0
+        recent_orders = []
+        try:
+            recent_orders_raw = db.query(Order).order_by(desc(Order.created_at)).limit(5).all()
+            recent_orders = [_serialize_admin_order(o) for o in recent_orders_raw]
+        except Exception as e:
+            logger.error(f"Error fetching recent orders: {e}")
 
-    return {
-        "users": {
-            "total_students": total_students,
-            "total_teachers": total_teachers,
-            "total_admins": total_admins,
-            "total_users": total_students + total_teachers + total_admins,
-        },
-        "courses": {
-            "total_courses": total_courses,
-            "published_courses": published_courses,
-            "draft_courses": total_courses - published_courses,
-            "total_lessons": total_lessons,
-        },
-        "store": {
-            "total_products": total_products,
-            "low_stock_count": low_stock_products,
-        },
-        "orders": {
-            "total_orders": total_orders,
-            "today_orders": today_orders,
-            "paid_orders": paid_orders,
-            "pending_orders": pending_orders,
-            "total_revenue": round(float(total_revenue), 2),
-            "recent_orders": recent_orders,
-        },
-        "entitlements": {
-            "active_enrollments": active_entitlements,
-        },
-    }
+        active_entitlements = 0
+        try:
+            active_entitlements = db.query(func.count(CourseEntitlement.id)).filter(CourseEntitlement.status == "ACTIVE").scalar() or 0
+        except Exception as e:
+            logger.warning(f"Error computing active_entitlements: {e}")
+
+        return {
+            "users": {
+                "total_students": total_students,
+                "total_teachers": total_teachers,
+                "total_admins": total_admins,
+                "total_users": total_students + total_teachers + total_admins,
+            },
+            "courses": {
+                "total_courses": total_courses,
+                "published_courses": published_courses,
+                "draft_courses": total_courses - published_courses,
+                "total_lessons": total_lessons,
+            },
+            "store": {
+                "total_products": total_products,
+                "low_stock_count": low_stock_products,
+            },
+            "orders": {
+                "total_orders": total_orders,
+                "today_orders": today_orders,
+                "paid_orders": paid_orders,
+                "pending_orders": pending_orders,
+                "total_revenue": round(float(total_revenue), 2),
+                "recent_orders": recent_orders,
+            },
+            "entitlements": {
+                "active_enrollments": active_entitlements,
+            },
+        }
+    except Exception as e:
+        logger.error(f"Critical error in get_admin_stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to load admin telemetry: {str(e)}",
+        )
 
 
 # ==============================================================================

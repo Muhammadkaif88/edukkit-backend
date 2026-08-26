@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from .routes import auth, courses, products, payments, video, learning, admin, admin_videos
 
-# Import all models so SQLAlchemy creates all tables on startup
+from sqlalchemy import text
 from .models import (  # noqa: F401
     User, Course, Lesson, Product, Order, OrderItem,
     Payment, PaymentEvent, CourseEntitlement, UserAddress,
@@ -12,6 +12,40 @@ from .models import (  # noqa: F401
 
 # Create tables
 Base.metadata.create_all(bind=engine)
+
+def run_startup_migrations():
+    """Ensure newly added columns exist in older database instances."""
+    migrations = [
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS tracking_number VARCHAR;",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_region VARCHAR DEFAULT 'Digital/DIY';",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS delivery_fee_rule VARCHAR DEFAULT 'FREE_DELIVERY';",
+        "ALTER TABLE orders ADD COLUMN IF NOT EXISTS discount_amount FLOAT DEFAULT 0.0;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS approval_status VARCHAR DEFAULT 'pending';",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_image VARCHAR;",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS original_price FLOAT;",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS short_description VARCHAR;",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS bunny_collection_id VARCHAR;",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS teacher_id INTEGER;",
+        "ALTER TABLE courses ADD COLUMN IF NOT EXISTS is_free BOOLEAN DEFAULT FALSE;",
+        "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS notes_pdf VARCHAR;",
+        "ALTER TABLE lessons ADD COLUMN IF NOT EXISTS circuit_diagram VARCHAR;",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS original_price FLOAT;",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS type VARCHAR DEFAULT 'diy_kit';",
+        "ALTER TABLE products ADD COLUMN IF NOT EXISTS linked_course_id INTEGER;",
+    ]
+    with engine.connect() as conn:
+        for stmt in migrations:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass
+
+try:
+    run_startup_migrations()
+except Exception:
+    pass
 
 app = FastAPI(title="EdukkitApp API", version="2.0.0")
 

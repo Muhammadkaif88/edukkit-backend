@@ -1,5 +1,7 @@
 import json
 import logging
+import time
+from datetime import datetime, date, time as dtime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
@@ -17,6 +19,48 @@ from ..middleware.auth_middleware import get_current_admin, get_current_staff_or
 
 logger = logging.getLogger("admin_routes")
 router = APIRouter()
+
+
+def _serialize_admin_order(order: Order) -> dict:
+    items_data = []
+    if order.items_json:
+        try:
+            items_data = json.loads(order.items_json)
+        except Exception:
+            items_data = []
+
+    shipping_addr = None
+    if order.shipping_address_json:
+        try:
+            shipping_addr = json.loads(order.shipping_address_json)
+        except Exception:
+            shipping_addr = order.shipping_address_json
+
+    return {
+        "id": order.id,
+        "user_id": order.user_id,
+        "customer_name": order.customer_name,
+        "customer_email": order.customer_email,
+        "customer_phone": order.customer_phone,
+        "items": items_data,
+        "items_total": order.items_total,
+        "delivery_fee": order.delivery_fee,
+        "delivery_region": order.delivery_region,
+        "delivery_fee_rule": order.delivery_fee_rule,
+        "discount_amount": order.discount_amount,
+        "total_payable": order.total_payable,
+        "currency": order.currency,
+        "shipping_address": shipping_addr,
+        "payment_status": order.payment_status,
+        "order_status": order.order_status,
+        "payment_method": order.payment_method,
+        "cashfree_order_id": order.cashfree_order_id,
+        "cashfree_payment_id": order.cashfree_payment_id,
+        "tracking_number": order.tracking_number,
+        "razorpay_order_id": order.razorpay_order_id,
+        "created_at": order.created_at.isoformat() if order.created_at else None,
+        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
+    }
 
 
 # ==============================================================================
@@ -46,6 +90,16 @@ def get_admin_stats(
     paid_orders = db.query(func.count(Order.id)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0
     total_revenue = db.query(func.sum(Order.total_payable)).filter(Order.payment_status == "PAYMENT_SUCCESS").scalar() or 0.0
 
+    today_start = datetime.combine(date.today(), dtime.min)
+    today_orders = db.query(func.count(Order.id)).filter(Order.created_at >= today_start).scalar() or 0
+    pending_orders = db.query(func.count(Order.id)).filter(
+        (Order.order_status.in_(["PENDING_PAYMENT", "PAID", "PROCESSING", "CONFIRMED"])) |
+        (Order.payment_status == "PAYMENT_PENDING")
+    ).scalar() or 0
+
+    recent_orders_raw = db.query(Order).order_by(desc(Order.created_at)).limit(5).all()
+    recent_orders = [_serialize_admin_order(o) for o in recent_orders_raw]
+
     active_entitlements = db.query(func.count(CourseEntitlement.id)).filter(CourseEntitlement.status == "ACTIVE").scalar() or 0
 
     return {
@@ -67,8 +121,11 @@ def get_admin_stats(
         },
         "orders": {
             "total_orders": total_orders,
+            "today_orders": today_orders,
             "paid_orders": paid_orders,
+            "pending_orders": pending_orders,
             "total_revenue": round(float(total_revenue), 2),
+            "recent_orders": recent_orders,
         },
         "entitlements": {
             "active_enrollments": active_entitlements,
@@ -557,64 +614,34 @@ def delete_admin_product(
 # 5. ORDERS & FULFILLMENT MANAGEMENT
 # ==============================================================================
 
-def _serialize_admin_order(order: Order) -> dict:
-    items_data = []
-    if order.items_json:
-        try:
-            items_data = json.loads(order.items_json)
-        except Exception:
-            items_data = []
-
-    shipping_addr = None
-    if order.shipping_address_json:
-        try:
-            shipping_addr = json.loads(order.shipping_address_json)
-        except Exception:
-            shipping_addr = order.shipping_address_json
-
-    return {
-        "id": order.id,
-        "user_id": order.user_id,
-        "customer_name": order.customer_name,
-        "customer_email": order.customer_email,
-        "customer_phone": order.customer_phone,
-        "items": items_data,
-        "items_total": order.items_total,
-        "delivery_fee": order.delivery_fee,
-        "delivery_region": order.delivery_region,
-        "delivery_fee_rule": order.delivery_fee_rule,
-        "discount_amount": order.discount_amount,
-        "total_payable": order.total_payable,
-        "currency": order.currency,
-        "shipping_address": shipping_addr,
-        "payment_status": order.payment_status,
-        "order_status": order.order_status,
-        "payment_method": order.payment_method,
-        "cashfree_order_id": order.cashfree_order_id,
-        "cashfree_payment_id": order.cashfree_payment_id,
-        "razorpay_order_id": order.razorpay_order_id,
-        "created_at": order.created_at.isoformat() if order.created_at else None,
-        "updated_at": order.updated_at.isoformat() if order.updated_at else None,
-    }
-
-
 @router.get("/orders")
 def get_admin_orders(
     order_status: Optional[str] = None,
     payment_status: Optional[str] = None,
+    search: Optional[str] = None,
     limit: int = Query(default=50, le=100),
     offset: int = Query(default=0, ge=0),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     """
-    Lists orders with filters and pagination.
+    Lists orders with search, status filters, and pagination.
     """
     query = db.query(Order)
     if order_status:
-        query = query.filter(Order.order_status == order_status)
+        query = query.filter(Order.order_status == order_status.upper())
     if payment_status:
-        query = query.filter(Order.payment_status == payment_status)
+        query = query.filter(Order.payment_status == payment_status.upper())
+    if search and search.strip():
+        term = f"%{search.strip()}%"
+        query = query.filter(
+            (Order.id.ilike(term))
+            | (Order.customer_name.ilike(term))
+            | (Order.customer_email.ilike(term))
+            | (Order.customer_phone.ilike(term))
+            | (Order.cashfree_payment_id.ilike(term))
+            | (Order.tracking_number.ilike(term))
+        )
 
     total_count = query.count()
     orders = query.order_by(desc(Order.created_at)).offset(offset).limit(limit).all()
@@ -638,8 +665,23 @@ def get_admin_order_detail(
     """
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
+        order = db.query(Order).filter(Order.cashfree_order_id == order_id).first()
+    if not order:
         raise HTTPException(status_code=404, detail="Order not found")
     return _serialize_admin_order(order)
+
+
+# Status lifecycle ranking for fulfillment transition validation
+STATUS_RANK = {
+    "PENDING_PAYMENT": 0,
+    "PAID": 1,
+    "CONFIRMED": 2,
+    "PROCESSING": 2,
+    "PACKED": 3,
+    "SHIPPED": 4,
+    "DELIVERED": 5,
+    "CANCELLED": 99,
+}
 
 
 @router.patch("/orders/{order_id}/status")
@@ -650,35 +692,101 @@ def update_admin_order_status(
     db: Session = Depends(get_db),
 ):
     """
-    Updates order lifecycle status (e.g. PROCESSING, PACKED, SHIPPED, DELIVERED, CANCELLED).
+    Updates order lifecycle status with strict transition safety guardrails:
+    - PAID -> CONFIRMED / PROCESSING -> PACKED -> SHIPPED -> DELIVERED
+    - Unpaid orders (payment_status != PAYMENT_SUCCESS) cannot be confirmed or shipped
+    - Invalid backward transitions are rejected
+    - Automatically assigns tracking ID for physical orders if not present
+    - Does NOT modify payment_status
     """
-    new_status = body.get("order_status")
-    if not new_status:
+    raw_status = body.get("order_status")
+    if not raw_status:
         raise HTTPException(status_code=400, detail="order_status is required.")
 
+    new_status = raw_status.strip().upper()
     valid_statuses = [
-        "PENDING_PAYMENT", "PAID", "PROCESSING",
+        "PENDING_PAYMENT", "PAID", "CONFIRMED", "PROCESSING",
         "PACKED", "SHIPPED", "DELIVERED", "CANCELLED"
     ]
     if new_status not in valid_statuses:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid status '{new_status}'. Allowed: {', '.join(valid_statuses)}",
+            detail=f"Invalid status '{raw_status}'. Allowed: {', '.join(valid_statuses)}",
         )
+
+    # Normalize CONFIRMED alias to canonical PROCESSING
+    if new_status == "CONFIRMED":
+        new_status = "PROCESSING"
 
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
+        order = db.query(Order).filter(Order.cashfree_order_id == order_id).first()
+    if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
+    current_status = order.order_status.upper()
+
+    # Rule 1: Cannot fulfill an unpaid order
+    if order.payment_status != "PAYMENT_SUCCESS":
+        if new_status in ("PAID", "CONFIRMED", "PROCESSING", "PACKED", "SHIPPED", "DELIVERED"):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Cannot advance fulfillment status for unpaid order {order.id}. "
+                    f"Current payment status is '{order.payment_status}'. "
+                    f"Only verified paid orders can be fulfilled."
+                ),
+            )
+
+    # Rule 2: Delivered orders are immutable
+    if current_status == "DELIVERED" and new_status != "DELIVERED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order {order.id} is already DELIVERED and cannot be modified.",
+        )
+
+    # Rule 3: Cancelled orders are immutable
+    if current_status == "CANCELLED" and new_status != "CANCELLED":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order {order.id} is CANCELLED and cannot be re-activated.",
+        )
+
+    # Rule 4: Reject invalid backward transitions
+    current_rank = STATUS_RANK.get(current_status, 0)
+    new_rank = STATUS_RANK.get(new_status, 0)
+
+    if new_status != "CANCELLED" and new_rank < current_rank:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid backward transition from '{current_status}' to '{new_status}'.",
+        )
+
+    # Update lifecycle status
     order.order_status = new_status
+
+    # Rule 5: Tracking number management
+    custom_tracking = body.get("tracking_number")
+    if custom_tracking and str(custom_tracking).strip():
+        order.tracking_number = str(custom_tracking).strip()
+    elif not order.tracking_number and new_status in ("CONFIRMED", "PROCESSING", "PACKED", "SHIPPED"):
+        # Auto-generate tracking ID if missing
+        order.tracking_number = f"EDK-TRK-{int(time.time() * 1000) % 10000000:07d}"
+
+    # Sync fulfillment status on physical OrderItem records
+    try:
+        items = db.query(OrderItem).filter(OrderItem.order_id == order.id).all()
+        for item in items:
+            if item.item_type in ("diy_kit", "electronics"):
+                item.fulfillment_status = new_status
+    except Exception as e:
+        logger.warning(f"Failed to sync OrderItem fulfillment status for {order.id}: {e}")
+
     db.commit()
     db.refresh(order)
-    return {
-        "success": True,
-        "order_id": order.id,
-        "order_status": order.order_status,
-        "payment_status": order.payment_status,
-    }
+
+    return _serialize_admin_order(order)
+
 
 
 # ==============================================================================
